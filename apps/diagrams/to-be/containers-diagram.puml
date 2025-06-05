@@ -6,7 +6,7 @@ title Smart Home - Containers Diagram (TO BE)
 Person(user, "Пользователь", "Владелец умного дома")
 System_Ext(partnerApis, "Partner APIs", "API партнеров для интеграции устройств")
 
-System_Boundary(platform, "Smart Home SaaS Platform") {
+System_Boundary(platform, "Smart Home Platform") {
     Container(webApp, "Web Application", "SPA", "Веб-интерфейс для управления умным домом")
     
     Container(apiGateway, "API Gateway", "Nginx", "Единая точка входа, маршрутизация, аутентификация, rate limiting")
