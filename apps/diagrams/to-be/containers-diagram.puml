@@ -9,7 +9,7 @@ System_Ext(partnerApis, "Partner APIs", "API партнеров для инте�
 System_Boundary(platform, "Smart Home SaaS Platform") {
     Container(webApp, "Web Application", "SPA", "Веб-интерфейс для управления умным домом")
     
-    Container(apiGateway, "API Gateway", "Kong/Nginx", "Единая точка входа, маршрутизация, аутентификация, rate limiting")
+    Container(apiGateway, "API Gateway", "Nginx", "Единая точка входа, маршрутизация, аутентификация, rate limiting")
     
     Container(authService, "Auth Service", "Go/Node.js", "Управление пользователями, подписки SaaS, аутентификация")
     Container(deviceService, "Device Service", "Go/Node.js", "Управление всеми типами устройств, команды управления")  
