@@ -147,6 +147,124 @@ Rel(subscriptionController, messageQueue, "События подписки", "Ka
 @enduml
 ```
 
+### Аутентификация пользователя
+
+```puml
+
+@startuml
+!theme plain
+title Последовательность аутентификации пользователя (TO BE)
+
+actor Пользователь as User
+autonumber
+participant "Web App" as WebApp
+participant "API Gateway" as Gateway
+participant "Auth Controller" as AuthCtrl
+participant "Password Service" as PwdService
+participant "JWT Service" as JWTService
+participant "User Repository" as UserRepo
+participant "Session Repository" as SessionRepo
+participant "User Database" as UserDB
+participant "Message Queue" as MQ
+
+== Аутентификация по логину и паролю ==
+
+User -> WebApp: Ввод логина/пароля
+WebApp -> Gateway: POST /auth/login\n{email, password}
+Gateway -> AuthCtrl: HTTP Request\nAuthenticate user
+
+AuthCtrl -> UserRepo: findByEmail(email)
+UserRepo -> UserDB: SELECT * FROM users\nWHERE email = ?
+UserDB --> UserRepo: User data or null
+UserRepo --> AuthCtrl: User object or null
+
+alt Пользователь не найден
+    AuthCtrl --> Gateway: 401 Unauthorized\n{error: "Invalid credentials"}
+    Gateway --> WebApp: HTTP 401
+    WebApp --> User: Ошибка входа
+else Пользователь найден
+    AuthCtrl -> PwdService: validatePassword(inputPassword, hashedPassword)
+    PwdService --> AuthCtrl: isValid (boolean)
+
+    alt Неверный пароль
+        AuthCtrl --> Gateway: 401 Unauthorized\n{error: "Invalid credentials"}
+        Gateway --> WebApp: HTTP 401
+        WebApp --> User: Ошибка входа
+    else Пароль верный
+        AuthCtrl -> JWTService: generateAccessToken(userId, userRole)
+        JWTService --> AuthCtrl: accessToken (JWT)
+
+        AuthCtrl -> JWTService: generateRefreshToken(userId)
+        JWTService --> AuthCtrl: refreshToken
+
+        AuthCtrl -> SessionRepo: createSession(userId, refreshToken, expiresAt)
+        SessionRepo -> UserDB: INSERT INTO sessions\n(user_id, refresh_token, expires_at)
+        UserDB --> SessionRepo: Session created
+        SessionRepo --> AuthCtrl: Session object
+
+        AuthCtrl -> MQ: publishEvent("user.authenticated", {userId, timestamp})
+        MQ --> AuthCtrl: Event published
+
+        AuthCtrl --> Gateway: 200 OK\n{accessToken, refreshToken, user}
+        Gateway --> WebApp: HTTP 200 + Tokens
+        WebApp -> WebApp: Сохранить токены в localStorage
+        WebApp --> User: Успешный вход
+    end
+end
+
+== Валидация токена для защищенных запросов ==
+
+User -> WebApp: Действие требующее авторизации
+WebApp -> Gateway: GET /devices\nAuthorization: Bearer <accessToken>
+Gateway -> Gateway: Извлечь токен из заголовка
+Gateway -> AuthCtrl: validateToken(accessToken)
+AuthCtrl -> JWTService: verifyToken(accessToken)
+JWTService --> AuthCtrl: {valid: true, userId, role} or {valid: false}
+
+alt Токен невалидный или истек
+    AuthCtrl --> Gateway: 401 Unauthorized\n{error: "Invalid token"}
+    Gateway --> WebApp: HTTP 401
+    WebApp -> WebApp: Удалить токены
+    WebApp --> User: Перенаправление на страницу входа
+else Токен валидный
+    Gateway -> Gateway: Добавить userId в context
+    Gateway -> "Device Service": GET /devices\nX-User-Id: userId
+    note right: Продолжение запроса к целевому сервису
+end
+
+== Обновление токена ==
+
+WebApp -> Gateway: POST /auth/refresh\n{refreshToken}
+Gateway -> AuthCtrl: Refresh access token
+
+AuthCtrl -> SessionRepo: findByRefreshToken(refreshToken)
+SessionRepo -> UserDB: SELECT * FROM sessions\nWHERE refresh_token = ?
+UserDB --> SessionRepo: Session data or null
+SessionRepo --> AuthCtrl: Session object or null
+
+alt Сессия не найдена или истекла
+    AuthCtrl --> Gateway: 401 Unauthorized\n{error: "Invalid refresh token"}
+    Gateway --> WebApp: HTTP 401
+    WebApp -> WebApp: Удалить токены
+    WebApp --> User: Перенаправление на страницу входа
+else Сессия валидная
+    AuthCtrl -> JWTService: generateAccessToken(userId, userRole)
+    JWTService --> AuthCtrl: newAccessToken
+
+    AuthCtrl -> SessionRepo: updateLastUsed(sessionId)
+    SessionRepo -> UserDB: UPDATE sessions\nSET last_used = NOW()
+    UserDB --> SessionRepo: Updated
+    SessionRepo --> AuthCtrl: Success
+
+    AuthCtrl --> Gateway: 200 OK\n{accessToken}
+    Gateway --> WebApp: HTTP 200 + New token
+    WebApp -> WebApp: Обновить токен в localStorage
+end
+
+@enduml
+
+```
+
 ## 2. Device Service
 
 **Домен:** Управление устройствами
@@ -239,6 +357,135 @@ Rel(sensorService, sensors, "Чтение данных", "API устройств
 Rel(heatingService, heatingDevices, "Управление", "API устройств")
 Rel(telemetryCollector, sensors, "Сбор телеметрии", "API устройств")
 Rel(telemetryCollector, heatingDevices, "Сбор телеметрии", "API устройств")
+
+@enduml
+```
+
+### Управление устройством
+
+```puml
+
+@startuml
+!theme plain
+title Последовательность управления устройством (TO BE)
+
+actor Пользователь as User
+autonumber
+participant "Web App" as WebApp
+participant "API Gateway" as Gateway
+participant "Command Controller" as CmdCtrl
+participant "Command Service" as CmdService
+participant "Device Manager" as DeviceManager
+participant "Heating Service" as HeatingService
+participant "Command Repository" as CmdRepo
+participant "Device Repository" as DeviceRepo
+participant "Device Database" as DeviceDB
+participant "Message Queue" as MQ
+participant "Real-time Queue" as RTQ
+participant "Heating Device" as Device
+
+== Отправка команды управления устройством ==
+
+User -> WebApp: Изменить температуру\n(Установить 22°C)
+WebApp -> Gateway: POST /devices/123/commands\nAuthorization: Bearer <token>\n{type: "SET_TEMPERATURE", value: 22}
+Gateway -> Gateway: Валидация токена
+Gateway -> CmdCtrl: Execute command\nUserId: 456, DeviceId: 123
+
+CmdCtrl -> DeviceRepo: findById(deviceId: 123)
+DeviceRepo -> DeviceDB: SELECT * FROM devices\nWHERE id = 123 AND user_id = 456
+DeviceDB --> DeviceRepo: Device data or null
+DeviceRepo --> CmdCtrl: Device object or null
+
+alt Устройство не найдено или не принадлежит пользователю
+    CmdCtrl --> Gateway: 404 Not Found\n{error: "Device not found"}
+    Gateway --> WebApp: HTTP 404
+    WebApp --> User: Ошибка: устройство не найдено
+else Устройство найдено
+    CmdCtrl -> CmdService: executeCommand(deviceId, commandType, value, userId)
+
+    CmdService -> CmdRepo: createCommand(deviceId, commandType, value, userId, status: "PENDING")
+    CmdRepo -> DeviceDB: INSERT INTO commands\n(device_id, type, value, user_id, status, created_at)
+    DeviceDB --> CmdRepo: Command created
+    CmdRepo --> CmdService: Command object with ID
+
+    CmdService -> MQ: publishEvent("command.created", {commandId, deviceId, type, value})
+    MQ --> CmdService: Event published
+
+    CmdService -> DeviceManager: sendCommand(deviceId, commandType, value)
+    DeviceManager -> HeatingService: setTemperature(deviceId: 123, temperature: 22)
+
+    HeatingService -> Device: HTTP POST /api/control\n{action: "SET_TEMP", value: 22}
+
+    alt Устройство недоступно или ошибка
+        Device --> HeatingService: HTTP 500 or Timeout
+        HeatingService --> DeviceManager: {success: false, error: "Device unreachable"}
+        DeviceManager --> CmdService: Command failed
+
+        CmdService -> CmdRepo: updateCommandStatus(commandId, status: "FAILED", error: "Device unreachable")
+        CmdRepo -> DeviceDB: UPDATE commands\nSET status = 'FAILED', error = 'Device unreachable'
+        DeviceDB --> CmdRepo: Updated
+        CmdRepo --> CmdService: Success
+
+        CmdService -> MQ: publishEvent("command.failed", {commandId, deviceId, error})
+        MQ --> CmdService: Event published
+
+        CmdService -> RTQ: publish("device.123.status", {status: "OFFLINE", error: "Unreachable"})
+        RTQ --> CmdService: Published
+
+        CmdService --> CmdCtrl: {success: false, error: "Device unreachable"}
+        CmdCtrl --> Gateway: 422 Unprocessable Entity\n{error: "Device unreachable"}
+        Gateway --> WebApp: HTTP 422
+        WebApp --> User: Ошибка: устройство недоступно
+
+    else Команда выполнена успешно
+        Device --> HeatingService: HTTP 200\n{status: "OK", currentTemp: 22}
+        HeatingService --> DeviceManager: {success: true, currentTemp: 22}
+        DeviceManager --> CmdService: Command executed successfully
+
+        CmdService -> CmdRepo: updateCommandStatus(commandId, status: "COMPLETED", response: {currentTemp: 22})
+        CmdRepo -> DeviceDB: UPDATE commands\nSET status = 'COMPLETED', response = '{"currentTemp": 22}'
+        DeviceDB --> CmdRepo: Updated
+        CmdRepo --> CmdService: Success
+
+        CmdService -> DeviceRepo: updateDeviceState(deviceId, {temperature: 22, lastSeen: NOW()})
+        DeviceRepo -> DeviceDB: UPDATE devices\nSET state = '{"temperature": 22}', last_seen = NOW()
+        DeviceDB --> DeviceRepo: Updated
+        DeviceRepo --> CmdService: Success
+
+        CmdService -> MQ: publishEvent("command.completed", {commandId, deviceId, result})
+        MQ --> CmdService: Event published
+
+        CmdService -> RTQ: publish("device.123.status", {temperature: 22, status: "ONLINE"})
+        RTQ --> CmdService: Published
+
+        CmdService --> CmdCtrl: {success: true, result: {temperature: 22}}
+        CmdCtrl --> Gateway: 200 OK\n{commandId, status: "COMPLETED", result: {temperature: 22}}
+        Gateway --> WebApp: HTTP 200 + Result
+        WebApp --> User: Температура установлена: 22°C
+    end
+end
+
+== Real-time обновление статуса ==
+
+note over RTQ, WebApp: WebSocket соединение активно
+RTQ -> WebApp: WebSocket message\n{type: "DEVICE_UPDATE", deviceId: 123, temperature: 22}
+WebApp -> WebApp: Обновить UI с новым состоянием
+WebApp --> User: Отображение текущей температуры: 22°C
+
+== Мониторинг выполнения команды ==
+
+User -> WebApp: Проверить статус команды
+WebApp -> Gateway: GET /commands/789\nAuthorization: Bearer <token>
+Gateway -> CmdCtrl: Get command status
+
+CmdCtrl -> CmdRepo: findById(commandId: 789, userId: 456)
+CmdRepo -> DeviceDB: SELECT * FROM commands\nWHERE id = 789 AND user_id = 456
+DeviceDB --> CmdRepo: Command data
+CmdRepo --> CmdCtrl: Command object
+
+CmdCtrl --> Gateway: 200 OK\n{commandId: 789, status: "COMPLETED", createdAt, completedAt}
+Gateway --> WebApp: HTTP 200 + Command details
+WebApp --> User: Статус команды: Выполнена
 
 @enduml
 ```
@@ -344,6 +591,178 @@ Rel(automationService, notificationService, "Отправка уведомлен
 
 ```
 
+### Выполнение сценария
+
+```puml
+@startuml
+!theme plain
+title Последовательность выполнения сценария автоматизации (TO BE)
+
+autonumber
+participant "Message Queue" as MQ
+participant "Scenario Service" as ScenarioService
+participant "Scenario Controller" as ScenarioCtrl
+participant "Rule Engine" as RuleEngine
+participant "Action Executor" as ActionExecutor
+participant "Scenario Repository" as ScenarioRepo
+participant "Execution Repository" as ExecutionRepo
+participant "Scenario Database" as ScenarioDB
+participant "Device Service" as DeviceService
+participant "Notification Service" as NotificationService
+participant "Telemetry Service" as TelemetryService
+participant "Real-time Queue" as RTQ
+participant "Web App" as WebApp
+actor Пользователь as User
+
+== Trigger сценария от телеметрии ==
+
+MQ -> ScenarioService: Event: "scenario.triggered"\n{scenarioId: 456, trigger: "LOW_TEMP", deviceId: 123, value: 18.5}
+ScenarioService -> ScenarioCtrl: processScenarioTrigger(scenarioId, triggerData)
+
+ScenarioCtrl -> ScenarioRepo: findById(scenarioId: 456)
+ScenarioRepo -> ScenarioDB: SELECT * FROM scenarios\nWHERE id = 456 AND active = true
+ScenarioDB --> ScenarioRepo: Scenario data or null
+ScenarioRepo --> ScenarioCtrl: Scenario object or null
+
+alt Сценарий не найден или неактивен
+    ScenarioCtrl --> ScenarioService: {success: false, error: "Scenario not found or inactive"}
+    ScenarioService -> MQ: publishEvent("scenario.failed", {scenarioId, error: "Not found"})
+    MQ --> ScenarioService: Event published
+else Сценарий найден и активен
+    ScenarioCtrl -> ExecutionRepo: createExecution(scenarioId, trigger, status: "STARTED")
+    ExecutionRepo -> ScenarioDB: INSERT INTO scenario_executions\n(scenario_id, trigger_data, status, started_at)
+    ScenarioDB --> ExecutionRepo: Execution created
+    ExecutionRepo --> ScenarioCtrl: Execution object with ID
+
+    ScenarioCtrl -> RuleEngine: evaluateConditions(scenario, triggerData)
+
+    == Вычисление условий сценария ==
+
+    RuleEngine -> RuleEngine: Парсинг условий сценария:\n- IF temperature < 20°C\n- AND time between 18:00-06:00\n- AND heating_mode = "auto"
+
+    RuleEngine -> TelemetryService: getCurrentTemperature(deviceId: 123)
+    TelemetryService --> RuleEngine: {temperature: 18.5, timestamp}
+
+    RuleEngine -> RuleEngine: Проверка времени:\n- Текущее время: 22:30\n- В диапазоне 18:00-06:00: ✓
+
+    RuleEngine -> DeviceService: getDeviceState(heatingDeviceId: 456)
+    DeviceService --> RuleEngine: {mode: "auto", status: "ON"}
+
+    RuleEngine -> RuleEngine: Вычисление результата:\n- temperature (18.5) < 20: ✓\n- time in range: ✓\n- mode = "auto": ✓\n→ Все условия выполнены
+
+    RuleEngine --> ScenarioCtrl: {conditionsMet: true, details: {...}}
+
+    alt Условия не выполнены
+        ScenarioCtrl -> ExecutionRepo: updateExecution(executionId, status: "SKIPPED", reason: "Conditions not met")
+        ExecutionRepo -> ScenarioDB: UPDATE scenario_executions\nSET status = 'SKIPPED', completed_at = NOW()
+        ScenarioDB --> ExecutionRepo: Updated
+        ExecutionRepo --> ScenarioCtrl: Success
+
+        ScenarioCtrl --> ScenarioService: {success: true, result: "SKIPPED"}
+        ScenarioService -> MQ: publishEvent("scenario.skipped", {scenarioId, executionId, reason})
+        MQ --> ScenarioService: Event published
+
+    else Условия выполнены - выполняем действия
+        ScenarioCtrl -> ActionExecutor: executeActions(scenario.actions, context)
+
+        == Выполнение действий сценария ==
+
+        ActionExecutor -> ActionExecutor: Парсинг действий:\n1. Увеличить температуру на радиаторе на 2°C\n2. Отправить уведомление пользователю\n3. Включить дополнительный обогреватель
+
+        loop Для каждого действия
+            alt Действие: Увеличить температуру радиатора
+                ActionExecutor -> DeviceService: sendCommand(deviceId: 456, action: "INCREASE_TEMP", value: 2)
+                DeviceService -> DeviceService: Выполнение команды управления устройством
+                DeviceService --> ActionExecutor: {success: true, newTemperature: 22}
+
+            else Действие: Отправить уведомление
+                ActionExecutor -> NotificationService: sendNotification(userId, type: "SCENARIO_EXECUTED", message: "Включено дополнительное отопление")
+                NotificationService --> ActionExecutor: {success: true, notificationId}
+
+            else Действие: Включить обогреватель
+                ActionExecutor -> DeviceService: sendCommand(deviceId: 789, action: "TURN_ON")
+                DeviceService --> ActionExecutor: {success: true, deviceStatus: "ON"}
+            end
+        end
+
+        ActionExecutor -> ActionExecutor: Сбор результатов выполнения:\n- Радиатор: успешно (22°C)\n- Уведомление: отправлено\n- Обогреватель: включен
+
+        ActionExecutor --> ScenarioCtrl: {success: true, executedActions: 3, results: [...]}
+
+        ScenarioCtrl -> ExecutionRepo: updateExecution(executionId, status: "COMPLETED", results: executionResults)
+        ExecutionRepo -> ScenarioDB: UPDATE scenario_executions\nSET status = 'COMPLETED', results = '...', completed_at = NOW()
+        ScenarioDB --> ExecutionRepo: Updated
+        ExecutionRepo --> ScenarioCtrl: Success
+
+        ScenarioCtrl -> ScenarioRepo: updateScenarioStats(scenarioId, lastExecuted: NOW(), executionCount++)
+        ScenarioRepo -> ScenarioDB: UPDATE scenarios\nSET last_executed = NOW(), execution_count = execution_count + 1
+        ScenarioDB --> ScenarioRepo: Updated
+        ScenarioRepo --> ScenarioCtrl: Success
+
+        ScenarioCtrl --> ScenarioService: {success: true, result: "COMPLETED", executedActions: 3}
+    end
+end
+
+== Публикация результатов ==
+
+ScenarioService -> MQ: publishEvent("scenario.completed", {scenarioId, executionId, results})
+MQ --> ScenarioService: Event published
+
+ScenarioService -> RTQ: publish("scenario.456.status", {status: "COMPLETED", executedAt, actions: 3})
+RTQ --> ScenarioService: Published
+
+== Real-time обновление пользовательского интерфейса ==
+
+note over RTQ, WebApp: WebSocket соединение активно
+RTQ -> WebApp: WebSocket message\n{type: "SCENARIO_EXECUTED", scenarioId: 456, name: "Подогрев при низкой температуре"}
+WebApp -> WebApp: Обновить страницу сценариев\nс отметкой о выполнении
+WebApp --> User: Уведомление: "Сценарий выполнен: Включено дополнительное отопление"
+
+== Ручное выполнение сценария пользователем ==
+
+User -> WebApp: Нажать "Выполнить сценарий"
+WebApp -> ScenarioService: POST /scenarios/456/execute\nAuthorization: Bearer <token>
+ScenarioService -> ScenarioCtrl: executeScenario(scenarioId: 456, triggeredBy: "USER", userId: 123)
+
+ScenarioCtrl -> ScenarioRepo: findById(scenarioId: 456)
+ScenarioRepo -> ScenarioDB: SELECT * FROM scenarios\nWHERE id = 456 AND user_id = 123
+ScenarioDB --> ScenarioRepo: Scenario data
+ScenarioRepo --> ScenarioCtrl: Scenario object
+
+ScenarioCtrl -> ExecutionRepo: createExecution(scenarioId, trigger: "MANUAL", userId: 123)
+ExecutionRepo -> ScenarioDB: INSERT INTO scenario_executions\n(scenario_id, triggered_by, user_id, status, started_at)
+ScenarioDB --> ExecutionRepo: Manual execution created
+ExecutionRepo --> ScenarioCtrl: Execution object
+
+note right: Ручное выполнение пропускает проверку условий
+ScenarioCtrl -> ActionExecutor: executeActions(scenario.actions, manualContext)
+
+ActionExecutor -> ActionExecutor: Выполнение всех действий\nбез проверки условий
+ActionExecutor --> ScenarioCtrl: {success: true, executedActions: 3}
+
+ScenarioCtrl -> ExecutionRepo: updateExecution(executionId, status: "COMPLETED")
+ExecutionRepo -> ScenarioDB: UPDATE scenario_executions\nSET status = 'COMPLETED', completed_at = NOW()
+ScenarioDB --> ExecutionRepo: Updated
+
+ScenarioCtrl --> ScenarioService: {success: true, executionId, message: "Scenario executed manually"}
+ScenarioService --> WebApp: HTTP 200 OK\n{executionId, status: "COMPLETED"}
+WebApp --> User: "Сценарий выполнен успешно"
+
+== Мониторинг выполнения сценариев ==
+
+User -> WebApp: Открыть историю выполнения
+WebApp -> ScenarioService: GET /scenarios/456/executions?limit=10\nAuthorization: Bearer <token>
+ScenarioService -> ExecutionRepo: findByScenarioId(scenarioId: 456, userId: 123, limit: 10)
+ExecutionRepo -> ScenarioDB: SELECT * FROM scenario_executions\nWHERE scenario_id = 456 AND user_id = 123\nORDER BY started_at DESC LIMIT 10
+ScenarioDB --> ExecutionRepo: Execution history
+ExecutionRepo --> ScenarioService: Executions array
+
+ScenarioService --> WebApp: HTTP 200 OK\n{executions: [...]}
+WebApp --> User: Отображение истории:\n- 22:30 - Выполнен автоматически\n- 21:15 - Выполнен вручную\n- 20:45 - Пропущен (условия не выполнены)
+
+@enduml
+```
+
 ## 4. Telemetry Service
 
 **Домен** Сбор и обработка телеметрии
@@ -430,6 +849,158 @@ Rel(analyticsEngine, realTimeQueue, "Real-time аналитика", "Redis Pub/S
 ' Связи с другими сервисами
 Rel(deviceService, dataCollector, "Телеметрия устройств", "gRPC/HTTP")
 Rel(alertsEngine, notificationService, "Отправка алертов", "gRPC")
+
+@enduml
+
+```
+
+### Обработчка телеметрии
+
+```puml
+
+@startuml
+!theme plain
+title Последовательность обработки телеметрии (TO BE)
+
+autonumber
+participant "Temperature Sensor" as Sensor
+participant "Telemetry Collector" as Collector
+participant "Telemetry Controller" as TelemetryCtrl
+participant "Telemetry Processor" as TelemetryProc
+participant "Analytics Service" as Analytics
+participant "Alert Service" as AlertService
+participant "Telemetry Repository" as TelemetryRepo
+participant "Device Repository" as DeviceRepo
+participant "Telemetry Database" as TelemetryDB
+participant "Device Database" as DeviceDB
+participant "Message Queue" as MQ
+participant "Real-time Queue" as RTQ
+participant "Cache Service" as Cache
+participant "Web App" as WebApp
+participant "Scenario Service" as ScenarioService
+
+== Сбор телеметрии от датчика ==
+
+Sensor -> Collector: HTTP POST /telemetry\n{deviceId: 123, temperature: 18.5, humidity: 65, timestamp}
+Collector -> Collector: Валидация данных\nи формата сообщения
+
+alt Невалидные данные
+    Collector --> Sensor: HTTP 400 Bad Request\n{error: "Invalid data format"}
+else Данные валидны
+    Collector -> DeviceRepo: findById(deviceId: 123)
+    DeviceRepo -> DeviceDB: SELECT * FROM devices WHERE id = 123
+    DeviceDB --> DeviceRepo: Device data or null
+    DeviceRepo --> Collector: Device object or null
+
+    alt Устройство не найдено
+        Collector --> Sensor: HTTP 404 Not Found\n{error: "Device not found"}
+    else Устройство найдено
+        Collector -> TelemetryCtrl: processTelemetry(deviceId, telemetryData)
+
+        TelemetryCtrl -> TelemetryProc: processRawTelemetry(deviceId, data)
+
+        == Обработка и обогащение данных ==
+
+        TelemetryProc -> TelemetryProc: Обогащение данных\n(добавление метаданных, калибровка)
+        TelemetryProc -> Analytics: calculateTrends(deviceId, currentTemp: 18.5)
+        Analytics -> TelemetryRepo: getRecentData(deviceId, period: "1h")
+        TelemetryRepo -> TelemetryDB: SELECT * FROM telemetry\nWHERE device_id = 123 AND timestamp > NOW() - INTERVAL '1 hour'
+        TelemetryDB --> TelemetryRepo: Historical data
+        TelemetryRepo --> Analytics: Recent telemetry array
+
+        Analytics -> Analytics: Расчет тенденций:\n- Средняя температура за час: 19.2°C\n- Тренд: понижение на 0.7°C
+        Analytics --> TelemetryProc: {avgTemp: 19.2, trend: "decreasing", rate: -0.7}
+
+        == Сохранение данных ==
+
+        TelemetryProc -> TelemetryRepo: saveTelemetry(enrichedData)
+        TelemetryRepo -> TelemetryDB: INSERT INTO telemetry\n(device_id, temperature, humidity, trends, timestamp)
+        TelemetryDB --> TelemetryRepo: Record saved
+        TelemetryRepo --> TelemetryProc: Success
+
+        TelemetryProc -> DeviceRepo: updateDeviceStatus(deviceId, lastSeen: NOW(), status: "ONLINE")
+        DeviceRepo -> DeviceDB: UPDATE devices\nSET last_seen = NOW(), status = 'ONLINE'
+        DeviceDB --> DeviceRepo: Updated
+        DeviceRepo --> TelemetryProc: Success
+
+        == Кэширование для быстрого доступа ==
+
+        TelemetryProc -> Cache: setCurrent(deviceId, currentState: {temp: 18.5, humidity: 65})
+        Cache --> TelemetryProc: Cached
+
+        == Публикация событий ==
+
+        TelemetryProc -> MQ: publishEvent("telemetry.received", {deviceId, data, trends})
+        MQ --> TelemetryProc: Event published
+
+        TelemetryProc -> RTQ: publish("device.123.telemetry", {temperature: 18.5, humidity: 65, trends})
+        RTQ --> TelemetryProc: Published
+
+        == Проверка алертов ==
+
+        TelemetryProc -> AlertService: checkAlerts(deviceId, currentTemp: 18.5)
+        AlertService -> AlertService: Проверка правил:\n- Минимальная температура: 20°C\n- Текущая: 18.5°C → ALERT!
+
+        alt Найдены алерты
+            AlertService -> MQ: publishEvent("alert.triggered", {deviceId, type: "LOW_TEMPERATURE", value: 18.5, threshold: 20})
+            MQ --> AlertService: Alert event published
+
+            AlertService -> RTQ: publish("alerts.123", {type: "LOW_TEMPERATURE", message: "Температура ниже нормы"})
+            RTQ --> AlertService: Alert published
+
+        else Алертов нет
+            note right: Продолжаем без алертов
+        end
+
+        AlertService --> TelemetryProc: Alert check completed
+
+        == Trigger сценариев автоматизации ==
+
+        TelemetryProc -> ScenarioService: checkTriggers(deviceId, telemetryData)
+        ScenarioService -> ScenarioService: Поиск активных сценариев\nс триггером по температуре
+
+        alt Найдены сценарии для выполнения
+            ScenarioService -> MQ: publishEvent("scenario.triggered", {scenarioId: 456, trigger: "LOW_TEMP", deviceId})
+            MQ --> ScenarioService: Scenario event published
+            note right: Сценарий выполнится асинхронно
+        else Сценариев нет
+            note right: Продолжаем без сценариев
+        end
+
+        ScenarioService --> TelemetryProc: Scenario check completed
+
+        TelemetryProc --> TelemetryCtrl: Processing completed successfully
+        TelemetryCtrl --> Collector: Success
+        Collector --> Sensor: HTTP 200 OK\n{status: "processed"}
+    end
+end
+
+== Real-time обновление пользовательского интерфейса ==
+
+note over RTQ, WebApp: WebSocket соединение активно
+RTQ -> WebApp: WebSocket message\n{type: "TELEMETRY_UPDATE", deviceId: 123, temperature: 18.5, humidity: 65}
+WebApp -> WebApp: Обновить dashboard\nс новыми данными
+
+alt Есть алерт
+    RTQ -> WebApp: WebSocket message\n{type: "ALERT", deviceId: 123, message: "Низкая температура"}
+    WebApp -> WebApp: Показать уведомление\nо критической температуре
+end
+
+== Batch обработка для аналитики ==
+
+note over Analytics: Выполняется каждые 5 минут
+Analytics -> TelemetryRepo: getRecentBatch(period: "5m")
+TelemetryRepo -> TelemetryDB: SELECT * FROM telemetry\nWHERE timestamp > NOW() - INTERVAL '5 minutes'
+TelemetryDB --> TelemetryRepo: Batch telemetry data
+TelemetryRepo --> Analytics: Telemetry batch
+
+Analytics -> Analytics: Агрегация данных:\n- Средние значения по комнатам\n- Обнаружение аномалий\n- Прогнозирование потребления
+Analytics -> TelemetryRepo: saveAggregatedData(aggregatedStats)
+TelemetryRepo -> TelemetryDB: INSERT INTO telemetry_aggregated\n(period, room_id, avg_temp, anomalies)
+TelemetryDB --> TelemetryRepo: Aggregated data saved
+
+Analytics -> MQ: publishEvent("analytics.completed", {period, insights})
+MQ --> Analytics: Analytics event published
 
 @enduml
 
