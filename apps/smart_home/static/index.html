@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Smart Home Platform API - Документация</title>
+    <title>Smart Home Platform API</title>
     <style>
         * {
             margin: 0;
@@ -162,105 +162,22 @@
     <div class="container">
         <header class="header">
             <h1>Smart Home Platform API</h1>
-            <p>Полная документация API для системы умного дома</p>
+            <p>Документация API для системы умного дома</p>
         </header>
-
-        <div class="status-info">
-            🟢 <strong>Статус API:</strong> <span id="api-status">Проверяется...</span> |
-            📡 <strong>Сервер:</strong> <span id="server-url">localhost:8080</span> |
-            <a href="/health" target="_blank">Проверить здоровье API</a>
-        </div>
 
         <div class="docs-grid">
             <div class="doc-card">
                 <h2>🔗 REST API (OpenAPI)</h2>
                 <p>Интерактивная документация REST API для управления устройствами, сценариями и телеметрией</p>
-                <ul>
-                    <li>Управление устройствами</li>
-                    <li>Создание и активация сценариев</li>
-                    <li>Получение данных телеметрии</li>
-                    <li>Аутентификация и авторизация</li>
-                </ul>
                 <a href="/docs" class="btn">📖 Swagger UI</a>
-                <a href="/swagger/" class="btn btn-secondary">🔧 Встроенный Swagger</a>
             </div>
 
             <div class="doc-card">
                 <h2>⚡ События (AsyncAPI)</h2>
                 <p>Документация асинхронных событий для взаимодействия между микросервисами</p>
-                <ul>
-                    <li>События устройств</li>
-                    <li>Данные телеметрии</li>
-                    <li>Активация сценариев</li>
-                    <li>Уведомления пользователей</li>
-                </ul>
                 <a href="/static/asyncapi-studio.html" class="btn">🎨 AsyncAPI Studio</a>
             </div>
         </div>
-
-        <div class="features">
-            <h2>Особенности API</h2>
-            <div class="features-grid">
-                <div class="feature">
-                    <div class="feature-icon">🏠</div>
-                    <h3>Управление устройствами</h3>
-                    <p>Полный контроль над всеми устройствами умного дома</p>
-                </div>
-                <div class="feature">
-                    <div class="feature-icon">🤖</div>
-                    <h3>Автоматизация</h3>
-                    <p>Создание и управление сценариями автоматизации</p>
-                </div>
-                <div class="feature">
-                    <div class="feature-icon">📊</div>
-                    <h3>Телеметрия</h3>
-                    <p>Сбор и анализ данных от датчиков</p>
-                </div>
-                <div class="feature">
-                    <div class="feature-icon">🔔</div>
-                    <h3>Уведомления</h3>
-                    <p>Система уведомлений в реальном времени</p>
-                </div>
-                <div class="feature">
-                    <div class="feature-icon">🔐</div>
-                    <h3>Безопасность</h3>
-                    <p>JWT аутентификация и авторизация</p>
-                </div>
-                <div class="feature">
-                    <div class="feature-icon">📱</div>
-                    <h3>Адаптивность</h3>
-                    <p>Поддержка мобильных и веб-приложений</p>
-                </div>
-            </div>
-        </div>
     </div>
-
-    <script>
-        // Проверяем статус API
-        async function checkApiStatus() {
-            try {
-                const response = await fetch('/health');
-                const status = document.getElementById('api-status');
-                const serverUrl = document.getElementById('server-url');
-                
-                if (response.ok) {
-                    status.textContent = 'Активен ✅';
-                    status.style.color = '#4CAF50';
-                } else {
-                    status.textContent = 'Недоступен ❌';
-                    status.style.color = '#f44336';
-                }
-                
-                serverUrl.textContent = window.location.host;
-            } catch (error) {
-                const status = document.getElementById('api-status');
-                status.textContent = 'Ошибка подключения ❌';
-                status.style.color = '#f44336';
-            }
-        }
-
-        // Проверяем статус при загрузке страницы
-        document.addEventListener('DOMContentLoaded', checkApiStatus);
-    </script>
 </body>
 </html> 
