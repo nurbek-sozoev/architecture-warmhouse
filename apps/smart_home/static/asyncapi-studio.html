@@ -127,7 +127,7 @@
             
             console.log('Загружаем AsyncAPI через Studio...');
             
-            fetch('/api-docs/asyncapi-v2.yaml')
+            fetch('/api-docs/asyncapi.yaml')
                 .then(response => {
                     if (!response.ok) {
                         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -147,7 +147,7 @@
                         
                         wrapper.innerHTML = `
                             <div style="text-align: left; padding: 2rem; border: 1px solid #ddd; border-radius: 8px; background: #fff;">
-                                <h3>⚠️ Спецификация слишком велика для встраивания</h3>
+                                <h3>Спецификация слишком велика для встраивания</h3>
                                 <p style="margin-top: 0.5rem; color: #555;">Из-за ограничений на длину URL, эту спецификацию нельзя загрузить в iframe. Используйте следующий метод:</p>
                                 <ol style="margin-top: 1.5rem; margin-left: 1.5rem; line-height: 1.8;">
                                     <li style="margin-bottom: 1rem;">
@@ -182,7 +182,7 @@
                         document.getElementById('copy-btn').addEventListener('click', () => {
                             navigator.clipboard.writeText(yamlContent).then(() => {
                                 const btn = document.getElementById('copy-btn');
-                                btn.textContent = '✅ Скопировано!';
+                                btn.textContent = 'Скопировано!';
                                 setTimeout(() => { btn.textContent = 'Копировать YAML'; }, 2000);
                             }, (err) => {
                                 console.error('Ошибка копирования:', err);
@@ -210,7 +210,7 @@
                 })
                 .catch(error => {
                     console.error('Ошибка загрузки AsyncAPI файла:', error);
-                    loading.innerHTML = `❌ Ошибка загрузки AsyncAPI файла: ${error.message}<br/>` +
+                    loading.innerHTML = `Ошибка загрузки AsyncAPI файла: ${error.message}<br/>` +
                                        '<a href="https://studio.asyncapi.com/" target="_blank">Попробуйте открыть AsyncAPI Studio напрямую</a>';
                 });
         });

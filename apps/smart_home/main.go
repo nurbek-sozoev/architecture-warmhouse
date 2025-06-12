@@ -70,8 +70,6 @@ func main() {
 	go func() {
 		log.Printf("Server starting on %s\n", srv.Addr)
 		log.Printf("📚 Documentation available at: http://localhost%s/\n", srv.Addr)
-		log.Printf("📖 Swagger UI: http://localhost%s/docs\n", srv.Addr)
-		log.Printf("⚡ AsyncAPI: http://localhost%s/static/asyncapi.html\n", srv.Addr)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Failed to start server: %v\n", err)
 		}
