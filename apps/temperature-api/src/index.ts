@@ -6,8 +6,10 @@ const app = new Koa();
 const router = new Router();
 
 interface TemperatureResponse {
+  status: string;
+  description: string;
   location: string;
-  temperature: number;
+  value: number;
   unit: string;
   timestamp: string;
 }
@@ -31,9 +33,11 @@ router.get('/temperature', async (ctx) => {
   const temperature = generateRandomTemperature();
   const response: TemperatureResponse = {
     location,
-    temperature,
+    value: temperature,
     unit: 'celsius',
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    status: 'active',
+    description: 'Temperature sensor data'
   };
 
   ctx.body = response;
@@ -51,7 +55,7 @@ app.use(cors());
 app.use(router.routes());
 app.use(router.allowedMethods());
 
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 8082;
 
 app.listen(PORT, () => {
   console.log(`Temperature API server running on port ${PORT}`);
