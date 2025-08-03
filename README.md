@@ -7,6 +7,9 @@
 ```
 cd ./apps
 ./init.sh
+
+docker exec -i smarthome-postgres psql -U postgres -d postgres < init.sql
+
 curl http://localhost:8080/health
 ```
 

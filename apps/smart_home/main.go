@@ -7,6 +7,8 @@ import (
 	"os"
 	"os/signal"
 	"smarthome/db"
+	"smarthome/handlers"
+	"smarthome/services"
 	"syscall"
 	"time"
 
@@ -51,8 +53,20 @@ func main() {
 		})
 	})
 
-	// API routes (mock endpoints for documentation)
+	// Initialize services
+	temperatureAPIURL := getEnv("TEMPERATURE_API_URL", "http://localhost:3001")
+	temperatureService := services.NewTemperatureService(temperatureAPIURL)
+
+	// Initialize handlers
+	sensorHandler := handlers.NewSensorHandler(database, temperatureService)
+
+	// API routes
 	apiRoutes := router.Group("/api/v1")
+
+	// Register real sensor endpoints
+	sensorHandler.RegisterRoutes(apiRoutes)
+
+	// Keep mock endpoints for other APIs (devices, scenarios, telemetry)
 	setupMockRoutes(apiRoutes)
 
 	// Start server
@@ -88,21 +102,11 @@ func main() {
 
 // setupMockRoutes создает mock endpoints для демонстрации документации
 func setupMockRoutes(router *gin.RouterGroup) {
-	// Mock devices endpoint
+	// Mock devices endpoint (non-sensor devices like heating, lighting, etc.)
 	router.GET("/devices", func(c *gin.Context) {
 		c.JSON(http.StatusOK, []gin.H{
 			{
-				"id":           1,
-				"name":         "Датчик гостиной",
-				"type":         "temperature",
-				"location":     "living_room",
-				"value":        22.5,
-				"unit":         "°C",
-				"status":       "active",
-				"last_updated": "2024-01-15T10:30:00Z",
-			},
-			{
-				"id":           2,
+				"id":           100,
 				"name":         "Отопление гостиной",
 				"type":         "heating",
 				"location":     "living_room",
@@ -110,6 +114,16 @@ func setupMockRoutes(router *gin.RouterGroup) {
 				"unit":         "",
 				"status":       "active",
 				"last_updated": "2024-01-15T10:25:00Z",
+			},
+			{
+				"id":           101,
+				"name":         "Освещение кухни",
+				"type":         "lighting",
+				"location":     "kitchen",
+				"value":        80,
+				"unit":         "%",
+				"status":       "active",
+				"last_updated": "2024-01-15T10:20:00Z",
 			},
 		})
 	})
