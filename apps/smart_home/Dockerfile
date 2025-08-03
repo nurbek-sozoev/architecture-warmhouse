@@ -28,6 +28,10 @@ WORKDIR /app
 # Copy the binary from the builder stage
 COPY --from=builder /app/smarthome .
 
+# Copy static files and API documentation
+COPY --from=builder /app/static ./static
+COPY --from=builder /app/api-docs ./api-docs
+
 # Expose the port the app runs on
 EXPOSE 8080
 
