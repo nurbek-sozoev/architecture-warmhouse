@@ -14,8 +14,6 @@ info:
     email: support@smarthome.local
 
 servers:
-  - url: https://api.smarthome.local
-    description: Production server
   - url: http://localhost:8080
     description: Development server
 

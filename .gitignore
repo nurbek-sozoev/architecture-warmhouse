@@ -195,3 +195,8 @@ task-*
 
 .env
 venv/
+
+node_modules/
+dist/
+*.log
+.env
