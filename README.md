@@ -38,3 +38,5 @@ curl http://localhost:8000
 [Документация](http://127.0.0.1:8000/architecture/task4/)
 
 # Задание 5. Создание Dockerfile
+
+См. файл ./apps/temperature-api/Dockerfile
