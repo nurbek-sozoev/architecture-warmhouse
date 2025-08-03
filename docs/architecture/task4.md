@@ -1,4 +1,7 @@
-# Документация
+# Задание 4
 
-- [Swagger UI](http://localhost:8080/static/swagger.html)
-- [AsyncAPI](http://localhost:8080/static/asyncapi-studio.html)
+> Убедитесь, что запущено приложение smart_home (см. README в корне проекта)
+
+[Документация Open API](http://localhost:8080/static/swagger.html)
+
+[Документация Async API](http://localhost:8080/static/asyncapi.html)

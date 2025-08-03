@@ -36,11 +36,6 @@ func main() {
 	// Swagger UI endpoint (встроенный через gin-swagger)
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
-	// Custom Swagger UI endpoint (использует наш openapi.yaml)
-	router.GET("/docs", func(c *gin.Context) {
-		c.Redirect(http.StatusMovedPermanently, "/static/swagger.html")
-	})
-
 	// Main documentation page
 	router.GET("/", func(c *gin.Context) {
 		c.Redirect(http.StatusMovedPermanently, "/static/index.html")

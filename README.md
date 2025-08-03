@@ -1,5 +1,15 @@
 # Warmhouse
 
+# Инициализация
+
+## Установка/запуск приложения smart_home
+
+```
+cd ./apps
+./init.sh
+curl http://localhost:8080/health
+```
+
 ## Установка/запуск mkdocs
 
 ```
@@ -7,6 +17,7 @@ python3 -m venv venv
 source venv/bin/activate
 pip3 install -r requirements.txt
 mkdocs serve
+curl http://localhost:8000
 ```
 
 # Задание 1. Анализ и планирование
