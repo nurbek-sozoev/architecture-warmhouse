@@ -38,7 +38,7 @@ if ! curl -s http://localhost:8082/health > /dev/null 2>&1; then
 fi
 
 echo "Init database..."
-docker exec -i smarthome-postgres psql -U postgres -d postgres < ./smart-home/init.sql
+docker exec -i smarthome-postgres psql -U postgres -d postgres < ./smart_home/init.sql
 
 echo "All services are up and running!"
 echo "The API is available at http://localhost:8080"

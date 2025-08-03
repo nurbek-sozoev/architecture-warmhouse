@@ -23,7 +23,7 @@ services:
 
   smart-home:
     build:
-      context: ./smart-home
+      context: ./smart_home
       dockerfile: Dockerfile
     container_name: smarthome-app
     depends_on:
