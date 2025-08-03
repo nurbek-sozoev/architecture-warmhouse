@@ -1,6 +1,6 @@
 # Temperature API
 
-Симулятор удаленного датчика температуры на Koa.js с TypeScript.
+Симулятор удаленного датчика температуры на Koa.js
 
 ## Установка
 
@@ -10,17 +10,8 @@ pnpm install
 
 ## Запуск
 
-### Разработка (с hot reload)
-
 ```bash
 pnpm dev
-```
-
-### Продакшн
-
-```bash
-pnpm build
-pnpm start
 ```
 
 ## API Endpoints
@@ -43,6 +34,8 @@ GET /temperature?location=kitchen
 
 ```json
 {
+  "status": "active",
+  "description": "Temperature sensor data",
   "location": "kitchen",
   "temperature": 23.5,
   "unit": "celsius",
@@ -63,10 +56,3 @@ GET /temperature?location=kitchen
   "timestamp": "2024-01-15T10:30:00.000Z"
 }
 ```
-
-## Особенности
-
-- Генерирует случайную температуру от -20°C до +40°C
-- Поддержка CORS
-- TypeScript с строгой типизацией
-- Валидация обязательного параметра location
