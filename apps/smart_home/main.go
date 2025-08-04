@@ -6,14 +6,15 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"syscall"
-	"time"
-
 	"smarthome/db"
 	"smarthome/handlers"
 	"smarthome/services"
+	"syscall"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
 func main() {
@@ -25,29 +26,48 @@ func main() {
 	}
 	defer database.Close()
 
-	log.Println("Connected to database successfully")
-
-	// Initialize temperature service
-	temperatureAPIURL := getEnv("TEMPERATURE_API_URL", "http://temperature-api:8081")
-	temperatureService := services.NewTemperatureService(temperatureAPIURL)
-	log.Printf("Temperature service initialized with API URL: %s\n", temperatureAPIURL)
-
 	// Initialize router
 	router := gin.Default()
+
+	// Serve static files
+	router.Static("/static", "./static")
+
+	// Serve API documentation files
+	router.Static("/api-docs", "./api-docs")
+
+	// Swagger UI endpoint (встроенный через gin-swagger)
+	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+
+	// Main documentation page
+	router.GET("/", func(c *gin.Context) {
+		c.Redirect(http.StatusMovedPermanently, "/static/index.html")
+	})
 
 	// Health check endpoint
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
-			"status": "ok",
+			"status":    "ok",
+			"service":   "smart-home-api",
+			"version":   "1.0",
+			"timestamp": time.Now().Format(time.RFC3339),
 		})
 	})
+
+	// Initialize services
+	temperatureAPIURL := getEnv("TEMPERATURE_API_URL", "http://localhost:3001")
+	temperatureService := services.NewTemperatureService(temperatureAPIURL)
+
+	// Initialize handlers
+	sensorHandler := handlers.NewSensorHandler(database, temperatureService)
 
 	// API routes
 	apiRoutes := router.Group("/api/v1")
 
-	// Register sensor routes
-	sensorHandler := handlers.NewSensorHandler(database, temperatureService)
+	// Register real sensor endpoints
 	sensorHandler.RegisterRoutes(apiRoutes)
+
+	// Keep mock endpoints for other APIs (devices, scenarios, telemetry)
+	setupMockRoutes(apiRoutes)
 
 	// Start server
 	srv := &http.Server{
@@ -58,6 +78,7 @@ func main() {
 	// Start the server in a goroutine
 	go func() {
 		log.Printf("Server starting on %s\n", srv.Addr)
+		log.Printf("📚 Documentation available at: http://localhost%s/\n", srv.Addr)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Failed to start server: %v\n", err)
 		}
@@ -77,6 +98,82 @@ func main() {
 	}
 
 	log.Println("Server exited properly")
+}
+
+// setupMockRoutes создает mock endpoints для демонстрации документации
+func setupMockRoutes(router *gin.RouterGroup) {
+	// Mock devices endpoint (non-sensor devices like heating, lighting, etc.)
+	router.GET("/devices", func(c *gin.Context) {
+		c.JSON(http.StatusOK, []gin.H{
+			{
+				"id":           100,
+				"name":         "Отопление гостиной",
+				"type":         "heating",
+				"location":     "living_room",
+				"value":        nil,
+				"unit":         "",
+				"status":       "active",
+				"last_updated": "2024-01-15T10:25:00Z",
+			},
+			{
+				"id":           101,
+				"name":         "Освещение кухни",
+				"type":         "lighting",
+				"location":     "kitchen",
+				"value":        80,
+				"unit":         "%",
+				"status":       "active",
+				"last_updated": "2024-01-15T10:20:00Z",
+			},
+		})
+	})
+
+	// Mock device command endpoint
+	router.POST("/devices/:deviceId/commands", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"command_id": "cmd_abc123",
+			"status":     "executed",
+			"message":    "Команда выполнена успешно",
+			"timestamp":  time.Now().Format(time.RFC3339),
+		})
+	})
+
+	// Mock scenarios endpoint
+	router.POST("/scenarios", func(c *gin.Context) {
+		c.JSON(http.StatusCreated, gin.H{
+			"id":          1,
+			"name":        "Автогрев гостиной",
+			"description": "Включает отопление когда температура ниже 20°C",
+			"enabled":     true,
+			"created_at":  time.Now().Format(time.RFC3339),
+		})
+	})
+
+	// Mock telemetry endpoint
+	router.GET("/telemetry/sensors/:sensorId/data", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"sensor_id":   1,
+			"sensor_name": "Датчик гостиной",
+			"period": gin.H{
+				"from": "2024-01-15T00:00:00Z",
+				"to":   "2024-01-15T23:59:59Z",
+			},
+			"data_points": []gin.H{
+				{
+					"timestamp": "2024-01-15T10:00:00Z",
+					"value":     22.1,
+					"status":    "active",
+				},
+				{
+					"timestamp": "2024-01-15T10:30:00Z",
+					"value":     22.5,
+					"status":    "active",
+				},
+			},
+		})
+	})
+
+	log.Println("Mock API endpoints configured for documentation demo")
 }
 
 // getEnv gets an environment variable or returns a default value

@@ -24,6 +24,22 @@ if ! docker exec smarthome-postgres pg_isready -U postgres > /dev/null 2>&1; the
   exit 1
 fi
 
+echo "Waiting for temperature-api to be ready..."
+for i in {1..30}; do
+  if curl -s http://localhost:8082/health > /dev/null 2>&1; then
+    echo "temperature-api is ready!"
+    break
+  fi
+done
+
+if ! curl -s http://localhost:8082/health > /dev/null 2>&1; then
+  echo "Error: temperature-api did not start within the expected time."
+  exit 1
+fi
+
+echo "Init database..."
+docker exec -i smarthome-postgres psql -U postgres -d postgres < ./smart_home/init.sql
+
 echo "All services are up and running!"
 echo "The API is available at http://localhost:8080"
 echo ""

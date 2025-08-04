@@ -1,0 +1,13 @@
+site_name: Smart Home Documentation
+theme:
+  name: material
+  palette:
+    scheme: default
+markdown_extensions:
+  - md_in_html
+
+plugins:
+  - search
+  - plantuml:
+      puml_url: https://www.plantuml.com/plantuml/
+      puml_keyword: puml
